@@ -1,5 +1,5 @@
 import streamlit as st
-from PIL import Image, ImageOps
+from PIL import Image
 import io
 import math
 
@@ -15,22 +15,20 @@ device_mode = st.sidebar.selectbox(
     ["PC 웹용 (가장 선명함)", "Tablet 태블릿용", "Mobile 모바일용 (최적화)", "사용자 직접 지정"]
 )
 
-# 사용 목적에 의해 정해진 사이즈로 고정
 if device_mode == "PC 웹용 (가장 선명함)":
-    fixed_width = 1200
+    max_limit = 1200
 elif device_mode == "Tablet 태블릿용":
-    fixed_width = 800
+    max_limit = 800
 elif device_mode == "Mobile 모바일용 (최적화)":
-    fixed_width = 500
+    max_limit = 500
 else:
-    fixed_width = 1000
+    max_limit = 1000
 
-# 슬라이더 대신 고정된 너비 정보를 표시 (또는 사용자 지정일 때만 슬라이더 활성화)
 if device_mode == "사용자 직접 지정":
-    max_width = st.sidebar.slider("출력 이미지 최대 너비 (Width, px)", 300, 2500, 1000, step=50)
+    max_width = st.sidebar.slider("출력 이미지 최대 크기 기준 (px)", 300, 2500, 1000, step=50)
 else:
-    st.sidebar.markdown(f"**출력 이미지 최대 너비:** `{fixed_width} px` (고정됨)")
-    max_width = fixed_width
+    st.sidebar.markdown(f"**출력 이미지 최대 기준:** `{max_limit} px` (고정됨)")
+    max_width = max_limit
 
 quality = st.sidebar.slider("WebP 압축 품질 (Quality)", 10, 100, 85, help="낮을수록 용량이 작아집니다 (이메일/웹용 추천: 75~85)")
 
@@ -62,10 +60,35 @@ st.title("🎨 올인원 웹 미디어 편집 및 WebP 최적화 툴")
 st.markdown("설치 없이 웹에서 사진 회전·위치 이동·편집, 목적별 기기 최적화 및 고효율 WebP 용량 압축을 한 번에 해결하세요.")
 st.markdown("---")
 
-# 미리보기 화면에 명확한 경계 표시를 위해 테두리 컨테이너 사용
 with st.container(border=True):
     st.markdown("### 📺 우측 상단 미리보기 화면 (고정 테두리 경계)")
     
+    cols_cnt = int(layout_choice[0])
+    rows_cnt = int(layout_choice[2])
+    total_slots = cols_cnt * rows_cnt
+    gap = 2  # 사진과 사진 사이 2pt 간격
+
+    # 규격 전체 기준 가로/세로 크기 산출
+    total_gaps_w = gap * (cols_cnt - 1)
+    total_gaps_h = gap * (rows_cnt - 1)
+
+    if aspect_ratio == "세로형 (9:16 - 숏폼/모바일용)":
+        grid_h = max_limit
+        grid_w = int(grid_h * (9 / 16))
+    elif aspect_ratio == "가로형 (16:9 - 블로그/유튜브용)":
+        grid_w = max_limit
+        grid_h = int(grid_w * (9 / 16))
+    elif aspect_ratio == "정방형 (1:1 - 인스타그램/프로필용)":
+        grid_w = max_limit
+        grid_h = max_limit
+    else:
+        grid_w = max_limit
+        grid_h = int(max_limit * (16 / 9)) # 기본 세로형 비율 적용
+
+    # 각 셀(칸)의 정확한 동일 규격 크기 산출
+    cell_w = int((grid_w - total_gaps_w) / cols_cnt)
+    cell_h = int((grid_h - total_gaps_h) / rows_cnt)
+
     processed_images = []
     if st.session_state['image_states']:
         for state in st.session_state['image_states']:
@@ -82,16 +105,7 @@ with st.container(border=True):
                 img = img.resize((max(1, new_w), max(1, new_h)), Image.Resampling.LANCZOS)
                 
             w, h = img.size
-            
-            # 3. 화면 비율(AspectRatio) 계산
-            if aspect_ratio == "정방형 (1:1 - 인스타그램/프로필용)":
-                target_ratio = 1.0
-            elif aspect_ratio == "가로형 (16:9 - 블로그/유튜브용)":
-                target_ratio = 16 / 9
-            elif aspect_ratio == "세로형 (9:16 - 숏폼/모바일용)":
-                target_ratio = 9 / 16
-            else: # 원본 비율 유지
-                target_ratio = w / h
+            target_ratio = cell_w / cell_h
 
             if (w / h) > target_ratio:
                 crop_h = h
@@ -100,7 +114,7 @@ with st.container(border=True):
                 crop_w = w
                 crop_h = int(w / target_ratio)
 
-            # 4. 주체 위치 이동 (상하/좌우 패닝 반영)
+            # 3. 주체 위치 이동 (상하/좌우 패닝 반영)
             max_left = max(0, w - crop_w)
             max_top = max(0, h - crop_h)
             
@@ -110,29 +124,7 @@ with st.container(border=True):
             img = img.crop((left, top, left + crop_w, top + crop_h))
             processed_images.append(img)
 
-    gap = 2  # 사진과 사진 사이 2pt 간격
-    cols_cnt = int(layout_choice[0])
-    rows_cnt = int(layout_choice[2])
-    total_slots = cols_cnt * rows_cnt
-
     if processed_images:
-        total_gaps_w = gap * (cols_cnt - 1)
-        available_w = max_width - total_gaps_w
-        cell_w = max(100, int(available_w / cols_cnt))
-        
-        if aspect_ratio == "정방형 (1:1 - 인스타그램/프로필용)":
-            cell_h = cell_w
-        elif aspect_ratio == "가로형 (16:9 - 블로그/유튜브용)":
-            cell_h = int(cell_w * 9 / 16)
-        elif aspect_ratio == "세로형 (9:16 - 숏폼/모바일용)":
-            cell_h = int(cell_w * 16 / 9)
-        else:
-            avg_ratio = sum([img.height / img.width for img in processed_images]) / len(processed_images)
-            cell_h = int(cell_w * avg_ratio)
-
-        grid_w = (cell_w * cols_cnt) + total_gaps_w
-        grid_h = (cell_h * rows_cnt) + (gap * (rows_cnt - 1))
-
         new_im = Image.new('RGB', (grid_w, grid_h), (255, 255, 255))
 
         for idx in range(total_slots):
@@ -149,17 +141,11 @@ with st.container(border=True):
                 blank_cell = Image.new('RGB', (cell_w, cell_h), (255, 255, 255))
                 new_im.paste(blank_cell, (x_pos, y_pos))
 
-        if new_im.width > max_width:
-            ratio = max_width / float(new_im.width)
-            new_height = int(float(new_im.height) * ratio)
-            new_im = new_im.resize((max_width, new_height), Image.Resampling.LANCZOS)
-
         buf = io.BytesIO()
         new_im.save(buf, format="WEBP", quality=quality)
         byte_im = buf.getvalue()
         file_size_kb = len(byte_im) / 1024
 
-        # 경계선이 명확히 보이는 프레임 안에 결과물 출력
         st.image(new_im, caption="미리보기 화면", width='stretch')
         st.markdown(f"**해상도:** `{new_im.width} x {new_im.height} px` &nbsp;|&nbsp; **예상 파일 용량:** `{file_size_kb:.1f} KB`")
 
