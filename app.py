@@ -82,16 +82,14 @@ with st.container(border=True):
                 target_ratio = 16 / 9
             elif aspect_ratio == "세로형 (9:16 - 숏폼/모바일용)":
                 target_ratio = 9 / 16
-            else: # 원본 비율 유지 (현재 사진의 비율 기준 셀 생성)
+            else: # 원본 비율 유지
                 target_ratio = w / h
 
             # 셀에 맞추기 위한 크롭 박스 계산
             if (w / h) > target_ratio:
-                # 사진이 더 가로로 길 때 -> 좌우를 자름
                 crop_h = h
                 crop_w = int(h * target_ratio)
             else:
-                # 사진이 더 세로로 길 때 -> 상하를 자름
                 crop_w = w
                 crop_h = int(w / target_ratio)
 
@@ -111,7 +109,6 @@ with st.container(border=True):
     total_slots = cols_cnt * rows_cnt
 
     if processed_images:
-        # 모든 사진 중 가장 큰 크기를 기준으로 격자 셀 크기 통일
         cell_w = max([img.width for img in processed_images])
         cell_h = max([img.height for img in processed_images])
 
