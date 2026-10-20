@@ -1,17 +1,43 @@
 import streamlit as st
 from PIL import Image
 import io
+import math
 
 st.set_page_config(page_title="ComDoctor Media & Collage Editor", page_icon="🎨", layout="wide")
 
+# ==========================================
+# 1. 상단 타이틀 영역
+# ==========================================
 st.title("🎨 올인원 웹 미디어 편집 및 WebP 최적화 툴")
 st.markdown("설치 없이 웹에서 사진 회전·편집, 목적별 기기 최적화 및 고효율 WebP 용량 압축을 한 번에 해결하세요.")
+st.markdown("---")
 
 # ==========================================
-# 1. 사이드바: 목적, 출력 설정 및 [배치 방식 선택] 이동 완료
+# 2. 메인 상단: 화면 비율 및 콜라주 배치 방식 적용 영역
 # ==========================================
-st.sidebar.header("⚙️ 목적 및 출력 설정")
+st.subheader("⚙️ 1단계: 화면 비율 및 콜라주 배치 방식 선택")
 
+col_opt1, col_opt2 = st.columns(2)
+
+with col_opt1:
+    aspect_ratio = st.selectbox(
+        "📐 화면 비율 선택", 
+        ["원본 비율 유지", "정방형 (1:1 - 인스타그램/프로필용)", "가로형 (16:9 - 블로그/유튜브용)", "세로형 (9:16 - 숏폼/모바일용)"]
+    )
+
+with col_opt2:
+    layout_choice = st.selectbox(
+        "🧩 콜라주 배치 방식 (Max 3x3)", 
+        [
+            "➡️ 가로 나란히 (Row)", 
+            "⬇️ 세로 나란히 (Column)", 
+            "🔲 2x2 격자 배열 (Grid)", 
+            "🎛️ 3x3 격자 배열 (Grid)"
+        ]
+    )
+
+# 사이드바 (기타 세부 설정: 용량 압축 품질 및 기기별 최대 너비)
+st.sidebar.header("⚙️ 출력 및 압축 세부 설정")
 device_mode = st.sidebar.selectbox(
     "📱 사용 목적 (기기별 최적 크기)", 
     ["PC 웹용 (가장 선명함)", "Tablet 태블릿용", "Mobile 모바일용 (최적화)", "사용자 직접 지정"]
@@ -27,43 +53,24 @@ else:
     default_width = 1000
 
 max_width = st.sidebar.slider("출력 이미지 최대 너비 (Width, px)", 300, 2500, default_width, step=50)
-
-aspect_ratio = st.sidebar.selectbox(
-    "📐 화면 비율 선택", 
-    ["원본 비율 유지", "정방형 (1:1 - 인스타그램/프로필용)", "가로형 (16:9 - 블로그/유튜브용)", "세로형 (9:16 - 숏폼/모바일용)"]
-)
-
 quality = st.sidebar.slider("WebP 압축 품질 (Quality)", 10, 100, 85, help="낮을수록 용량이 작아집니다 (이메일/웹용 추천: 75~85)")
 
-st.sidebar.markdown("---")
-st.sidebar.header("🧩 콜라주 배치 방식 (Max 3x3)")
-layout_choice = st.sidebar.radio(
-    "배치 레이아웃 선택", 
-    [
-        "➡️ 가로 나란히 (Row)", 
-        "⬇️ 세로 나란히 (Column)", 
-        "🔲 2x2 격자 배열 (Grid)", 
-        "🎛️ 3x3 격자 배열 (Grid)"
-    ],
-    label_visibility="collapsed"
-)
-
-st.sidebar.markdown("---")
-st.sidebar.info("💡 **팁:** 사진을 올린 후 각 이미지의 방향(회전)을 조정한 뒤 결과물을 확인하세요.")
+st.markdown("---")
 
 # ==========================================
-# 2. 메인 화면: 2단 레이아웃 구성 (좌측: 파일/개별편집, 우측: 실시간 미리보기)
+# 3. 메인 중단: 이미지 파일 업로드 및 개별 편집 영역
 # ==========================================
+st.subheader("🖼️ 2단계: 이미지 파일 업로드 및 개별 회전 편집")
 uploaded_files = st.file_uploader("편집 및 변환할 이미지 파일들을 선택하세요 (PNG, JPG, WEBP)", type=["jpg", "png", "webp"], accept_multiple_files=True)
 
 if uploaded_files:
     st.markdown("---")
     
-    # 2분할 화면 구성 (좌측: 개별 편집 / 우측: 결과 미리보기)
+    # 좌측: 개별 편집 / 우측 상단: 실시간 미리보기 2단 분할
     col_left, col_right = st.columns([1.1, 0.9])
     
     with col_left:
-        st.subheader("🖼️ 업로드된 이미지 개별 회전 및 편집")
+        st.write("### ✂️ 업로드된 이미지 개별 회전")
         processed_images = []
         
         for i, uploaded_file in enumerate(uploaded_files):
@@ -82,11 +89,11 @@ if uploaded_files:
                 processed_images.append(image)
 
     # ==========================================
-    # 3. 우측 상단: 실시간 결과물 미리보기 및 저장 영역
+    # 4. 우측 상단: 실시간 결과물 미리보기 및 다운로드
     # ==========================================
     with col_right:
         st.subheader("📺 우측 상단 미리보기 화면")
-        st.markdown("사이드바와 좌측 편집 설정에 따라 실시간으로 결과가 반영됩니다.")
+        st.markdown("상단에서 선택한 비율과 배치 방식에 따라 실시간 반영됩니다.")
         
         # 이미지 비율 사전 크롭 처리
         cropped_images = []
@@ -135,7 +142,6 @@ if uploaded_files:
             cell_w = max(widths)
             cell_h = max(heights)
             
-            import math
             rows = math.ceil(len(cropped_images) / cols)
             
             new_im = Image.new('RGB', (cell_w * cols, cell_h * rows), (255, 255, 255))
@@ -157,7 +163,7 @@ if uploaded_files:
         byte_im = buf.getvalue()
         file_size_kb = len(byte_im) / 1024
 
-        # 📌 최종 결과물 화면 출력
+        # 결과 출력
         st.image(new_im, caption=f"최종 결과물 미리보기", use_container_width=True)
         st.info(f"📊 **해상도:** `{new_im.width} x {new_im.height} px` | **예상 용량:** `{file_size_kb:.1f} KB`")
         
