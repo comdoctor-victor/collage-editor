@@ -1,12 +1,12 @@
 import streamlit as st
-from PIL import Image
+from PIL import Image, ImageOps
 import io
 import math
 
 st.set_page_config(page_title="ComDoctor Media & Collage Editor", page_icon="🎨", layout="wide")
 
 # ==========================================
-# 1. 사이드바: 출력 및 압축 세부 설정 + 화면 비율 + 콜라주 배치 방식
+# 1. 사이드바: 출력 및 압축 세부 설정 (사용 목적에 따른 너비 자동 고정)
 # ==========================================
 st.sidebar.header("⚙️ 출력 및 압축 세부 설정")
 
@@ -15,22 +15,29 @@ device_mode = st.sidebar.selectbox(
     ["PC 웹용 (가장 선명함)", "Tablet 태블릿용", "Mobile 모바일용 (최적화)", "사용자 직접 지정"]
 )
 
+# 사용 목적에 의해 정해진 사이즈로 고정
 if device_mode == "PC 웹용 (가장 선명함)":
-    default_width = 1200
+    fixed_width = 1200
 elif device_mode == "Tablet 태블릿용":
-    default_width = 800
+    fixed_width = 800
 elif device_mode == "Mobile 모바일용 (최적화)":
-    default_width = 500
+    fixed_width = 500
 else:
-    default_width = 1000
+    fixed_width = 1000
 
-max_width = st.sidebar.slider("출력 이미지 최대 너비 (Width, px)", 300, 2500, default_width, step=50)
+# 슬라이더 대신 고정된 너비 정보를 표시 (또는 사용자 지정일 때만 슬라이더 활성화)
+if device_mode == "사용자 직접 지정":
+    max_width = st.sidebar.slider("출력 이미지 최대 너비 (Width, px)", 300, 2500, 1000, step=50)
+else:
+    st.sidebar.markdown(f"**출력 이미지 최대 너비:** `{fixed_width} px` (고정됨)")
+    max_width = fixed_width
+
 quality = st.sidebar.slider("WebP 압축 품질 (Quality)", 10, 100, 85, help="낮을수록 용량이 작아집니다 (이메일/웹용 추천: 75~85)")
 
 st.sidebar.markdown("---")
 
 aspect_ratio = st.sidebar.selectbox(
-    "📐 화면 비율 선택", 
+    "📐 화면 비율 선택 (가로/세로)", 
     ["원본 비율 유지", "정방형 (1:1 - 인스타그램/프로필용)", "가로형 (16:9 - 블로그/유튜브용)", "세로형 (9:16 - 숏폼/모바일용)"]
 )
 
@@ -49,14 +56,15 @@ if 'image_states' not in st.session_state:
     st.session_state['image_states'] = []
 
 # ==========================================
-# 3. 메인 상단: 제목 및 실시간 미리보기 화면 (고정)
+# 3. 메인 상단: 제목 및 실시간 미리보기 화면 (경계선 테두리 표시)
 # ==========================================
 st.title("🎨 올인원 웹 미디어 편집 및 WebP 최적화 툴")
 st.markdown("설치 없이 웹에서 사진 회전·위치 이동·편집, 목적별 기기 최적화 및 고효율 WebP 용량 압축을 한 번에 해결하세요.")
 st.markdown("---")
 
+# 미리보기 화면에 명확한 경계 표시를 위해 테두리 컨테이너 사용
 with st.container(border=True):
-    st.subheader("📺 우측 상단 미리보기 화면")
+    st.markdown("### 📺 우측 상단 미리보기 화면 (고정 테두리 경계)")
     
     processed_images = []
     if st.session_state['image_states']:
@@ -108,12 +116,10 @@ with st.container(border=True):
     total_slots = cols_cnt * rows_cnt
 
     if processed_images:
-        # 지정된 출력 최대 너비(max_width)를 기준으로 각 셀의 가로 폭과 세로 폭을 정확히 분배
         total_gaps_w = gap * (cols_cnt - 1)
         available_w = max_width - total_gaps_w
         cell_w = max(100, int(available_w / cols_cnt))
         
-        # 비율에 맞춰 셀 높이 결정 (대표 비율 기준)
         if aspect_ratio == "정방형 (1:1 - 인스타그램/프로필용)":
             cell_h = cell_w
         elif aspect_ratio == "가로형 (16:9 - 블로그/유튜브용)":
@@ -121,7 +127,6 @@ with st.container(border=True):
         elif aspect_ratio == "세로형 (9:16 - 숏폼/모바일용)":
             cell_h = int(cell_w * 16 / 9)
         else:
-            # 원본 이미지들의 평균 비율 활용
             avg_ratio = sum([img.height / img.width for img in processed_images]) / len(processed_images)
             cell_h = int(cell_w * avg_ratio)
 
@@ -144,7 +149,6 @@ with st.container(border=True):
                 blank_cell = Image.new('RGB', (cell_w, cell_h), (255, 255, 255))
                 new_im.paste(blank_cell, (x_pos, y_pos))
 
-        # 최종 최대 너비가 설정값을 넘지 않도록 보정
         if new_im.width > max_width:
             ratio = max_width / float(new_im.width)
             new_height = int(float(new_im.height) * ratio)
@@ -155,6 +159,7 @@ with st.container(border=True):
         byte_im = buf.getvalue()
         file_size_kb = len(byte_im) / 1024
 
+        # 경계선이 명확히 보이는 프레임 안에 결과물 출력
         st.image(new_im, caption="미리보기 화면", width='stretch')
         st.markdown(f"**해상도:** `{new_im.width} x {new_im.height} px` &nbsp;|&nbsp; **예상 파일 용량:** `{file_size_kb:.1f} KB`")
 
