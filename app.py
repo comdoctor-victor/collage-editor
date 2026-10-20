@@ -85,7 +85,6 @@ with st.container(border=True):
             else: # 원본 비율 유지
                 target_ratio = w / h
 
-            # 셀에 맞추기 위한 크롭 박스 계산
             if (w / h) > target_ratio:
                 crop_h = h
                 crop_w = int(h * target_ratio)
@@ -109,10 +108,24 @@ with st.container(border=True):
     total_slots = cols_cnt * rows_cnt
 
     if processed_images:
-        cell_w = max([img.width for img in processed_images])
-        cell_h = max([img.height for img in processed_images])
+        # 지정된 출력 최대 너비(max_width)를 기준으로 각 셀의 가로 폭과 세로 폭을 정확히 분배
+        total_gaps_w = gap * (cols_cnt - 1)
+        available_w = max_width - total_gaps_w
+        cell_w = max(100, int(available_w / cols_cnt))
+        
+        # 비율에 맞춰 셀 높이 결정 (대표 비율 기준)
+        if aspect_ratio == "정방형 (1:1 - 인스타그램/프로필용)":
+            cell_h = cell_w
+        elif aspect_ratio == "가로형 (16:9 - 블로그/유튜브용)":
+            cell_h = int(cell_w * 9 / 16)
+        elif aspect_ratio == "세로형 (9:16 - 숏폼/모바일용)":
+            cell_h = int(cell_w * 16 / 9)
+        else:
+            # 원본 이미지들의 평균 비율 활용
+            avg_ratio = sum([img.height / img.width for img in processed_images]) / len(processed_images)
+            cell_h = int(cell_w * avg_ratio)
 
-        grid_w = (cell_w * cols_cnt) + (gap * (cols_cnt - 1))
+        grid_w = (cell_w * cols_cnt) + total_gaps_w
         grid_h = (cell_h * rows_cnt) + (gap * (rows_cnt - 1))
 
         new_im = Image.new('RGB', (grid_w, grid_h), (255, 255, 255))
@@ -131,6 +144,7 @@ with st.container(border=True):
                 blank_cell = Image.new('RGB', (cell_w, cell_h), (255, 255, 255))
                 new_im.paste(blank_cell, (x_pos, y_pos))
 
+        # 최종 최대 너비가 설정값을 넘지 않도록 보정
         if new_im.width > max_width:
             ratio = max_width / float(new_im.width)
             new_height = int(float(new_im.height) * ratio)
