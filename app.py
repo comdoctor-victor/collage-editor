@@ -75,12 +75,10 @@ if uploaded_files:
     if current_names != existing_names and len(uploaded_files) > 0:
         new_states = []
         for f in uploaded_files:
-            # 메모리 보호를 위해 업로드된 원본을 가벼운 Pillow 객체로 로드 후 바이트로 보관
             img = Image.open(f)
             if img.mode != 'RGB':
                 img = img.convert('RGB')
             
-            # 과도한 메모리 사용 방지를 위해 긴 축이 1200px을 넘으면 사전 축소
             max_dim = 1200
             if max(img.size) > max_dim:
                 img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
@@ -114,7 +112,7 @@ else:
                 
                 c_thumb, c_controls = st.columns([1, 2])
                 with c_thumb:
-                    st.image(img_obj, caption=f"#{idx+1} {state['name']}", use_container_width=True)
+                    st.image(img_obj, caption=f"#{idx+1} {state['name']}", width='stretch')
                 
                 with c_controls:
                     st.write(f"**사진 #{idx+1}**: {state['name']}")
@@ -229,7 +227,6 @@ else:
                     blank_cell = Image.new('RGB', (cell_w, cell_h), (255, 255, 255))
                     new_im.paste(blank_cell, (x_pos, y_pos))
 
-            # 최종 최대 너비 적용
             if new_im.width > max_width:
                 ratio = max_width / float(new_im.width)
                 new_height = int(float(new_im.height) * ratio)
@@ -240,9 +237,8 @@ else:
             byte_im = buf.getvalue()
             file_size_kb = len(byte_im) / 1024
 
-            st.image(new_im, caption="미리보기 화면", use_container_width=True)
+            st.image(new_im, caption="미리보기 화면", width='stretch')
             
-            # 마지막 줄 용량 표시
             st.markdown(f"**해상도:** `{new_im.width} x {new_im.height} px` &nbsp;|&nbsp; **예상 파일 용량:** `{file_size_kb:.1f} KB`")
 
             st.download_button(
@@ -252,3 +248,4 @@ else:
                 mime="image/webp",
                 type="primary"
             )
+            
