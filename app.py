@@ -9,7 +9,7 @@ st.set_page_config(page_title="ComDoctor Media & Collage Editor", page_icon="�
 # 1. 상단 타이틀 및 설명
 # ==========================================
 st.title("🎨 올인원 웹 미디어 편집 및 WebP 최적화 툴")
-st.markdown("설치 없이 웹에서 사진 회전·편집, 목적별 기기 최적화 및 고효율 WebP 용량 압축을 한 번에 해결하세요.")
+st.markdown("설치 없이 웹에서 사진 회전·위치 이동·편집, 목적별 기기 최적화 및 고효율 WebP 용량 압축을 한 번에 해결하세요.")
 st.markdown("---")
 
 # ==========================================
@@ -35,7 +35,7 @@ max_width = st.sidebar.slider("출력 이미지 최대 너비 (Width, px)", 300,
 quality = st.sidebar.slider("WebP 압축 품질 (Quality)", 10, 100, 85, help="낮을수록 용량이 작아집니다 (이메일/웹용 추천: 75~85)")
 
 st.sidebar.markdown("---")
-st.sidebar.info("💡 **팁:** 대용량 사진도 자동으로 경량화되어 메모리 과부하 없이 원활하게 편집할 수 있습니다.")
+st.sidebar.info("💡 **팁:** 사진 안에서 주체를 강조하려면 상하/좌우 이동 슬라이더를 조절해 보세요.")
 
 # ==========================================
 # 3. 세션 상태 초기화
@@ -90,7 +90,9 @@ if uploaded_files:
                 "bytes": byte_arr.getvalue(),
                 "name": f.name,
                 "rotate": 0,
-                "scale": 100
+                "scale": 100,
+                "pan_x": 50, # 가로 중앙 기본값 (0~100)
+                "pan_y": 50  # 세로 중앙 기본값 (0~100)
             })
         st.session_state['image_states'] = new_states
 
@@ -103,8 +105,110 @@ else:
     st.markdown("---")
     col_edit, col_preview = st.columns([1.1, 0.9])
     
+    # ==========================================
+    # 우측 컬럼을 상단 고정(Sticky) 형태로 배치
+    # ==========================================
+    with col_preview:
+        st.markdown('<style>div.stSticky {position: sticky; top: 0rem; z-index: 999;}</style>', unsafe_allow_html=True)
+        with st.container(border=True):
+            st.subheader("📺 우측 상단 미리보기 화면")
+            
+            processed_images = []
+            for state in st.session_state['image_states']:
+                img = Image.open(io.BytesIO(state["bytes"]))
+                
+                # 1. 회전 적용
+                if state["rotate"] > 0:
+                    img = img.rotate(-state["rotate"], expand=True)
+                    
+                # 2. 확대/축소 적용
+                if state["scale"] != 100:
+                    new_w = int(img.width * (state["scale"] / 100.0))
+                    new_h = int(img.height * (state["scale"] / 100.0))
+                    img = img.resize((max(1, new_w), max(1, new_h)), Image.Resampling.LANCZOS)
+                    
+                w, h = img.size
+                
+                # 3. 비율 크롭 및 패닝(상하/좌우 주체 이동) 적용
+                target_w, target_h = w, h
+                if aspect_ratio == "정방형 (1:1 - 인스타그램/프로필용)":
+                    side = min(w, h)
+                    target_w, target_h = side, side
+                elif aspect_ratio == "가로형 (16:9 - 블로그/유튜브용)":
+                    target_h = int(w * 9 / 16)
+                    if h < target_h:
+                        target_h = h
+                elif aspect_ratio == "세로형 (9:16 - 숏폼/모바일용)":
+                    target_w = int(h * 9 / 16)
+                    if w < target_w:
+                        target_w = w
+
+                # 패닝 오프셋 계산 (0~100 슬라이더 값을 기반으로 크롭 영역 이동)
+                max_left = max(0, w - target_w)
+                max_top = max(0, h - target_h)
+                
+                left = int(max_left * (state["pan_x"] / 100.0))
+                top = int(max_top * (state["pan_y"] / 100.0))
+                
+                img = img.crop((left, top, left + target_w, top + target_h))
+                processed_images.append(img)
+
+            gap = 2  # 사진과 사진 사이 2pt 간격
+            cols_cnt = int(layout_choice[0])
+            rows_cnt = int(layout_choice[2])
+            total_slots = cols_cnt * rows_cnt
+
+            if processed_images:
+                cell_w = max([img.width for img in processed_images])
+                cell_h = max([img.height for img in processed_images])
+
+                grid_w = (cell_w * cols_cnt) + (gap * (cols_cnt - 1))
+                grid_h = (cell_h * rows_cnt) + (gap * (rows_cnt - 1))
+
+                new_im = Image.new('RGB', (grid_w, grid_h), (255, 255, 255))
+
+                for idx in range(total_slots):
+                    r = idx // cols_cnt
+                    c = idx % cols_cnt
+                    
+                    x_pos = c * (cell_w + gap)
+                    y_pos = r * (cell_h + gap)
+
+                    if idx < len(processed_images):
+                        im_to_paste = processed_images[idx].resize((cell_w, cell_h), Image.Resampling.LANCZOS)
+                        new_im.paste(im_to_paste, (x_pos, y_pos))
+                    else:
+                        blank_cell = Image.new('RGB', (cell_w, cell_h), (255, 255, 255))
+                        new_im.paste(blank_cell, (x_pos, y_pos))
+
+                if new_im.width > max_width:
+                    ratio = max_width / float(new_im.width)
+                    new_height = int(float(new_im.height) * ratio)
+                    new_im = new_im.resize((max_width, new_height), Image.Resampling.LANCZOS)
+
+                buf = io.BytesIO()
+                new_im.save(buf, format="WEBP", quality=quality)
+                byte_im = buf.getvalue()
+                file_size_kb = len(byte_im) / 1024
+
+                st.image(new_im, caption="미리보기 화면", width='stretch')
+                st.markdown(f"**해상도:** `{new_im.width} x {new_im.height} px` &nbsp;|&nbsp; **예상 파일 용량:** `{file_size_kb:.1f} KB`")
+
+                st.download_button(
+                    label="💾 최적화된 WebP 이미지 다운로드",
+                    data=byte_im,
+                    file_name="comdoctor_optimized_collage.webp",
+                    mime="image/webp",
+                    type="primary"
+                )
+
+    # ==========================================
+    # 좌측 컬럼: 개별 사진 편집 (순서, 교체, 회전, 크기, 주체 이동)
+    # ==========================================
     with col_edit:
-        st.subheader("✂️ 개별 사진 순서·교체·회전·확대/축소")
+        st.subheader("✂️ 개별 사진 순서·교체·회전·확대/축소 및 주체 이동")
+        
+        total_count = len(st.session_state['image_states'])
         
         for idx, state in enumerate(st.session_state['image_states']):
             with st.container(border=True):
@@ -117,20 +221,19 @@ else:
                 with c_controls:
                     st.write(f"**사진 #{idx+1}**: {state['name']}")
                     
-                    # 1. 순서 바꾸기 (위/아래)
-                    c_b1, c_b2 = st.columns(2)
-                    with c_b1:
-                        if idx > 0:
-                            if st.button("⬆️ 앞으로", key=f"up_{idx}"):
-                                st.session_state['image_states'][idx], st.session_state['image_states'][idx-1] = \
-                                    st.session_state['image_states'][idx-1], st.session_state['image_states'][idx]
-                                st.rerun()
-                    with c_b2:
-                        if idx < len(st.session_state['image_states']) - 1:
-                            if st.button("⬇️ 뒤로", key=f"down_{idx}"):
-                                st.session_state['image_states'][idx], st.session_state['image_states'][idx+1] = \
-                                    st.session_state['image_states'][idx+1], st.session_state['image_states'][idx]
-                                st.rerun()
+                    # 1. 순서 번호 변경
+                    new_position = st.selectbox(
+                        "📍 이동할 순서 번호 선택",
+                        options=list(range(1, total_count + 1)),
+                        index=idx,
+                        key=f"pos_{idx}"
+                    )
+                    
+                    if new_position - 1 != idx:
+                        target_idx = new_position - 1
+                        moved_item = st.session_state['image_states'].pop(idx)
+                        st.session_state['image_states'].insert(target_idx, moved_item)
+                        st.rerun()
 
                     # 2. 다른 사진으로 교체
                     new_single_file = st.file_uploader(f"다른 사진 교체 (#{idx+1})", type=["jpg", "png", "webp"], key=f"replace_{idx}")
@@ -162,90 +265,18 @@ else:
                     )
                     state["scale"] = scale_option
 
-    # ==========================================
-    # 7. 우측 상단: 실시간 미리보기 및 용량 표시
-    # ==========================================
-    with col_preview:
-        st.subheader("📺 우측 상단 미리보기 화면")
-        
-        processed_images = []
-        for state in st.session_state['image_states']:
-            img = Image.open(io.BytesIO(state["bytes"]))
-            
-            if state["rotate"] > 0:
-                img = img.rotate(-state["rotate"], expand=True)
-                
-            if state["scale"] != 100:
-                new_w = int(img.width * (state["scale"] / 100.0))
-                new_h = int(img.height * (state["scale"] / 100.0))
-                img = img.resize((max(1, new_w), max(1, new_h)), Image.Resampling.LANCZOS)
-                
-            w, h = img.size
-            if aspect_ratio == "정방형 (1:1 - 인스타그램/프로필용)":
-                side = min(w, h)
-                left = (w - side) // 2
-                top = (h - side) // 2
-                img = img.crop((left, top, left + side, top + side))
-            elif aspect_ratio == "가로형 (16:9 - 블로그/유튜브용)":
-                target_h = int(w * 9 / 16)
-                if h > target_h:
-                    top = (h - target_h) // 2
-                    img = img.crop((0, top, w, top + target_h))
-            elif aspect_ratio == "세로형 (9:16 - 숏폼/모바일용)":
-                target_w = int(h * 9 / 16)
-                if w > target_w:
-                    left = (w - target_w) // 2
-                    img = img.crop((left, 0, left + target_w, h))
-                    
-            processed_images.append(img)
+                    # 5. 사진 안에서 주체 이동 (좌우 / 상하 패닝 슬라이더)
+                    st.markdown("🎯 **주체 위치 조절 (Crop Pan)**")
+                    pan_x = st.slider(
+                        "좌우 이동 (Horizontal)", 
+                        0, 100, state["pan_x"], step=5,
+                        key=f"pan_x_{idx}"
+                    )
+                    state["pan_x"] = pan_x
 
-        gap = 2  # 사진과 사진 사이 2pt 간격
-        cols_cnt = int(layout_choice[0])
-        rows_cnt = int(layout_choice[2])
-        total_slots = cols_cnt * rows_cnt
-
-        if processed_images:
-            cell_w = max([img.width for img in processed_images])
-            cell_h = max([img.height for img in processed_images])
-
-            grid_w = (cell_w * cols_cnt) + (gap * (cols_cnt - 1))
-            grid_h = (cell_h * rows_cnt) + (gap * (rows_cnt - 1))
-
-            new_im = Image.new('RGB', (grid_w, grid_h), (255, 255, 255))
-
-            for idx in range(total_slots):
-                r = idx // cols_cnt
-                c = idx % cols_cnt
-                
-                x_pos = c * (cell_w + gap)
-                y_pos = r * (cell_h + gap)
-
-                if idx < len(processed_images):
-                    im_to_paste = processed_images[idx].resize((cell_w, cell_h), Image.Resampling.LANCZOS)
-                    new_im.paste(im_to_paste, (x_pos, y_pos))
-                else:
-                    blank_cell = Image.new('RGB', (cell_w, cell_h), (255, 255, 255))
-                    new_im.paste(blank_cell, (x_pos, y_pos))
-
-            if new_im.width > max_width:
-                ratio = max_width / float(new_im.width)
-                new_height = int(float(new_im.height) * ratio)
-                new_im = new_im.resize((max_width, new_height), Image.Resampling.LANCZOS)
-
-            buf = io.BytesIO()
-            new_im.save(buf, format="WEBP", quality=quality)
-            byte_im = buf.getvalue()
-            file_size_kb = len(byte_im) / 1024
-
-            st.image(new_im, caption="미리보기 화면", width='stretch')
-            
-            st.markdown(f"**해상도:** `{new_im.width} x {new_im.height} px` &nbsp;|&nbsp; **예상 파일 용량:** `{file_size_kb:.1f} KB`")
-
-            st.download_button(
-                label="💾 최적화된 WebP 이미지 다운로드",
-                data=byte_im,
-                file_name="comdoctor_optimized_collage.webp",
-                mime="image/webp",
-                type="primary"
-            )
-            
+                    pan_y = st.slider(
+                        "상하 이동 (Vertical)", 
+                        0, 100, state["pan_y"], step=5,
+                        key=f"pan_y_{idx}"
+                    )
+                    state["pan_y"] = pan_y
