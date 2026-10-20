@@ -6,7 +6,7 @@ import math
 st.set_page_config(page_title="ComDoctor Media & Collage Editor", page_icon="🎨", layout="wide")
 
 # ==========================================
-# 1. 사이드바: 출력 및 압축 세부 설정 + 화면 비율 + 콜라주 배치 방식 배치
+# 1. 사이드바: 출력 및 압축 세부 설정 + 화면 비율 + 콜라주 배치 방식
 # ==========================================
 st.sidebar.header("⚙️ 출력 및 압축 세부 설정")
 
@@ -40,7 +40,7 @@ layout_choice = st.sidebar.selectbox(
 )
 
 st.sidebar.markdown("---")
-st.sidebar.info("💡 **팁:** 사진 안에서 주체를 강조하려면 상하/좌우 이동 슬라이더를 조절해 보세요.")
+st.sidebar.info("💡 **팁:** 사진 비율이 격자에 안 맞아 잘릴 때, **확대/축소**와 **상하/좌우 이동**을 조절하면 원하는 주체를 완벽하게 맞출 수 있습니다.")
 
 # ==========================================
 # 2. 세션 상태 초기화
@@ -49,51 +49,60 @@ if 'image_states' not in st.session_state:
     st.session_state['image_states'] = []
 
 # ==========================================
-# 3. 메인 상단: 제목 및 우측 상단 고정 미리보기 화면
+# 3. 메인 상단: 제목 및 실시간 미리보기 화면 (고정)
 # ==========================================
 st.title("🎨 올인원 웹 미디어 편집 및 WebP 최적화 툴")
 st.markdown("설치 없이 웹에서 사진 회전·위치 이동·편집, 목적별 기기 최적화 및 고효율 WebP 용량 압축을 한 번에 해결하세요.")
 st.markdown("---")
 
-# 미리보기 화면 컨테이너 (상단에 먼저 고정 노출)
 with st.container(border=True):
     st.subheader("📺 우측 상단 미리보기 화면")
     
-    # 미리보기 연산 파이프라인
     processed_images = []
     if st.session_state['image_states']:
         for state in st.session_state['image_states']:
             img = Image.open(io.BytesIO(state["bytes"]))
             
+            # 1. 회전 적용
             if state["rotate"] > 0:
                 img = img.rotate(-state["rotate"], expand=True)
                 
+            # 2. 확대/축소 적용 (Scale %)
             if state["scale"] != 100:
                 new_w = int(img.width * (state["scale"] / 100.0))
                 new_h = int(img.height * (state["scale"] / 100.0))
                 img = img.resize((max(1, new_w), max(1, new_h)), Image.Resampling.LANCZOS)
                 
             w, h = img.size
-            target_w, target_h = w, h
+            
+            # 3. 화면 비율(AspectRatio) 계산
             if aspect_ratio == "정방형 (1:1 - 인스타그램/프로필용)":
-                side = min(w, h)
-                target_w, target_h = side, side
+                target_ratio = 1.0
             elif aspect_ratio == "가로형 (16:9 - 블로그/유튜브용)":
-                target_h = int(w * 9 / 16)
-                if h < target_h:
-                    target_h = h
+                target_ratio = 16 / 9
             elif aspect_ratio == "세로형 (9:16 - 숏폼/모바일용)":
-                target_w = int(h * 9 / 16)
-                if w < target_w:
-                    target_w = w
+                target_ratio = 9 / 16
+            else: # 원본 비율 유지 (현재 사진의 비율 기준 셀 생성)
+                target_ratio = w / h
 
-            max_left = max(0, w - target_w)
-            max_top = max(0, h - target_h)
+            # 셀에 맞추기 위한 크롭 박스 계산
+            if (w / h) > target_ratio:
+                # 사진이 더 가로로 길 때 -> 좌우를 자름
+                crop_h = h
+                crop_w = int(h * target_ratio)
+            else:
+                # 사진이 더 세로로 길 때 -> 상하를 자름
+                crop_w = w
+                crop_h = int(w / target_ratio)
+
+            # 4. 주체 위치 이동 (상하/좌우 패닝 반영)
+            max_left = max(0, w - crop_w)
+            max_top = max(0, h - crop_h)
             
             left = int(max_left * (state["pan_x"] / 100.0))
             top = int(max_top * (state["pan_y"] / 100.0))
             
-            img = img.crop((left, top, left + target_w, top + target_h))
+            img = img.crop((left, top, left + crop_w, top + crop_h))
             processed_images.append(img)
 
     gap = 2  # 사진과 사진 사이 2pt 간격
@@ -102,6 +111,7 @@ with st.container(border=True):
     total_slots = cols_cnt * rows_cnt
 
     if processed_images:
+        # 모든 사진 중 가장 큰 크기를 기준으로 격자 셀 크기 통일
         cell_w = max([img.width for img in processed_images])
         cell_h = max([img.height for img in processed_images])
 
